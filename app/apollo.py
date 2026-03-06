@@ -1,169 +1,104 @@
 """
 Apollo.io API client.
 
-Credit strategy:
-- Company search: FREE (no credits consumed)
-- People search (obfuscated emails): FREE
-- Email reveal (full email): 1 credit per contact — only called on account approval
+Free tier reality:
+- /v1/organizations/search  → full company data ✓
+- People API                → returns null on free tier ✗
+
+Strategy:
+- Discover + score companies via org search
+- Surface Apollo web link + LinkedIn search URL per company
+- User manually identifies contact and enters email in dashboard
 """
 import httpx
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from app.config import settings
 
 BASE_URL = "https://api.apollo.io/v1"
 HEADERS = {
     "Content-Type": "application/json",
-    "Cache-Control": "no-cache",
     "X-Api-Key": settings.apollo_api_key,
 }
 
-# Title priority matrix used both here and by the AI layer
-TITLE_PRIORITY = {
-    "travel_manager":  ["travel manager", "corporate travel", "travel coordinator", "travel director"],
-    "construction":    ["vp operations", "operations director", "project manager", "vp engineering", "controller", "cfo"],
-    "tech":            ["vp finance", "head of finance", "finance director", "vp of finance",
-                        "office manager", "workplace manager", "chief of staff"],
-    "smb":             ["ceo", "founder", "co-founder", "coo", "cfo", "office manager"],
-    "default":         ["cfo", "vp finance", "finance director", "hr director",
-                        "people operations", "office manager", "chief financial officer"],
-}
-
-CONSTRUCTION_KEYWORDS = ["construction", "engineering", "oil", "gas", "energy", "contracting"]
-TECH_KEYWORDS = ["software", "technology", "saas", "information technology"]
+# Industry keyword groups — each maps to one Apollo search call
+INDUSTRY_KEYWORD_GROUPS = [
+    ["construction", "general contractor", "civil engineering"],
+    ["consulting", "management consulting", "professional services"],
+    ["staffing", "recruiting", "workforce solutions"],
+    ["oil and gas", "energy", "oilfield services"],
+    ["financial services", "wealth management", "investment banking"],
+    ["information technology", "managed services", "it services"],
+    ["computer software", "saas", "enterprise software"],
+]
 
 
-def _title_rank(title: str, industry: str) -> int:
-    """Lower number = higher priority contact."""
-    if not title:
-        return 99
-    t = title.lower()
-    # Travel manager always wins regardless of industry
-    for kw in TITLE_PRIORITY["travel_manager"]:
-        if kw in t:
-            return 0
-    ind = (industry or "").lower()
-    if any(k in ind for k in CONSTRUCTION_KEYWORDS):
-        tier = TITLE_PRIORITY["construction"]
-    elif any(k in ind for k in TECH_KEYWORDS):
-        tier = TITLE_PRIORITY["tech"]
-    else:
-        tier = TITLE_PRIORITY["default"]
-    for i, kw in enumerate(tier):
-        if kw in t:
-            return i + 1
-    return 50
-
-
-def search_companies(page: int = 1, per_page: int = 100) -> List[Dict[str, Any]]:
+def search_companies(page: int = 1, per_page: int = 25) -> List[Dict[str, Any]]:
     """
-    Search Apollo for companies matching targeting criteria.
-    No credits consumed — returns basic org data only.
+    Search Apollo for companies matching travel-heavy industries.
+    Rotates through industry keyword groups across pages.
+    Returns deduplicated list with full firmographic data.
     """
-    payload = {
-        "page": page,
-        "per_page": per_page,
-        "organization_industry_tag_ids": [],   # Apollo uses tag IDs; we filter by industry name client-side
-        "organization_locations": ["United States"],
-        "organization_num_employees_ranges": [f"{settings.min_employees},100000"],
-    }
+    # Rotate keyword group based on page number
+    group = INDUSTRY_KEYWORD_GROUPS[(page - 1) % len(INDUSTRY_KEYWORD_GROUPS)]
+    results = []
+
     try:
         resp = httpx.post(
-            f"{BASE_URL}/mixed_companies/search",
+            f"{BASE_URL}/organizations/search",
             headers=HEADERS,
-            json=payload,
+            json={
+                "page": ((page - 1) // len(INDUSTRY_KEYWORD_GROUPS)) + 1,
+                "per_page": per_page,
+                "organization_locations": ["United States"],
+                "organization_num_employees_ranges": [f"{settings.min_employees},50000"],
+                "q_organization_keyword_tags": group,
+            },
             timeout=30,
         )
         resp.raise_for_status()
-        data = resp.json()
-        orgs = data.get("organizations", [])
-        # Filter to target industries client-side
-        target = [i.lower() for i in settings.industry_list]
-        filtered = []
-        for org in orgs:
-            ind = (org.get("industry") or "").lower()
-            if any(t in ind for t in target):
-                filtered.append(org)
-        return filtered
+        orgs = resp.json().get("organizations", [])
+        for o in orgs:
+            results.append(_normalize_org(o))
+        return results
     except Exception as e:
-        print(f"[Apollo] company search error: {e}")
+        print(f"[Apollo] org search error (group={group}): {e}")
         return []
 
 
-def search_people_for_company(
-    org_domain: str,
-    org_name: str,
-    industry: str,
-) -> List[Dict[str, Any]]:
-    """
-    Search for people at a company. Emails are obfuscated — no credits consumed.
-    Returns ranked list of contacts (max 5).
-    """
-    payload = {
-        "page": 1,
-        "per_page": 10,
-        "organization_domains": [org_domain] if org_domain else [],
-        "q_organization_name": org_name if not org_domain else None,
-        "contact_email_status": ["verified", "guessed", "unavailable"],
-        "person_seniorities": ["owner", "founder", "c_suite", "vp", "director", "manager"],
+def _normalize_org(o: Dict) -> Dict:
+    """Flatten Apollo org response into a consistent shape."""
+    return {
+        "id": o.get("id", ""),
+        "name": o.get("name", ""),
+        "primary_domain": o.get("primary_domain", ""),
+        "industry": o.get("industry", ""),
+        "estimated_num_employees": o.get("estimated_num_employees"),
+        "annual_revenue_printed": o.get("annual_revenue_printed", ""),
+        "city": o.get("city", ""),
+        "state": o.get("state", ""),
+        "country": o.get("country", ""),
+        "linkedin_url": o.get("linkedin_url", ""),
+        "short_description": o.get("short_description", ""),
+        "keywords": o.get("keywords", []),
+        "sic_codes": o.get("sic_codes", []),
+        "naics_codes": o.get("naics_codes", []),
+        "locations": o.get("locations", []),
     }
-    try:
-        resp = httpx.post(
-            f"{BASE_URL}/mixed_people/search",
-            headers=HEADERS,
-            json=payload,
-            timeout=30,
-        )
-        resp.raise_for_status()
-        people = resp.json().get("people", [])
-        # Rank by title priority
-        ranked = sorted(people, key=lambda p: _title_rank(p.get("title", ""), industry))
-        return ranked[:5]
-    except Exception as e:
-        print(f"[Apollo] people search error for {org_name}: {e}")
-        return []
 
 
-def reveal_contact_email(apollo_person_id: str) -> Optional[str]:
+def apollo_contact_search_url(org_name: str, org_domain: str) -> str:
     """
-    Reveal full email for a contact. Costs 1 Apollo credit.
-    Only called when user approves an account.
+    Direct link to Apollo web app to find contacts at this company.
+    User clicks this, logs into Apollo, sees contacts to choose from.
     """
-    payload = {
-        "id": apollo_person_id,
-        "reveal_personal_emails": False,   # work email only
-    }
-    try:
-        resp = httpx.post(
-            f"{BASE_URL}/people/match",
-            headers=HEADERS,
-            json=payload,
-            timeout=30,
-        )
-        resp.raise_for_status()
-        person = resp.json().get("person", {})
-        email = person.get("email")
-        # Fall back to email from contact list
-        if not email:
-            for e in person.get("email_addresses", []):
-                if e.get("email"):
-                    email = e["email"]
-                    break
-        return email
-    except Exception as e:
-        print(f"[Apollo] reveal email error for {apollo_person_id}: {e}")
-        return None
+    from urllib.parse import quote
+    if org_domain:
+        return f"https://app.apollo.io/#/people?organization_domains[]={quote(org_domain)}&person_seniorities[]=c_suite&person_seniorities[]=vp&person_seniorities[]=director&person_seniorities[]=manager"
+    return f"https://app.apollo.io/#/people?q_organization_name={quote(org_name)}&person_seniorities[]=c_suite&person_seniorities[]=vp"
 
 
-def enrich_org(domain: str) -> Optional[Dict[str, Any]]:
-    """Enrich a single org by domain. Free."""
-    try:
-        resp = httpx.get(
-            f"{BASE_URL}/organizations/enrich",
-            headers=HEADERS,
-            params={"domain": domain},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json().get("organization")
-    except Exception:
-        return None
+def linkedin_contact_search_url(org_name: str, title_hint: str = "") -> str:
+    """LinkedIn people search URL for finding the right contact."""
+    from urllib.parse import quote
+    query = f"{title_hint} {org_name}".strip() if title_hint else org_name
+    return f"https://www.linkedin.com/search/results/people/?keywords={quote(query)}&origin=GLOBAL_SEARCH_HEADER"

@@ -16,7 +16,7 @@ from app.db import (
 )
 from app.config import settings
 from app.scheduler import start_scheduler, run_weekly_discovery, run_daily_touch_sequence
-import app.apollo as apollo
+import app.apollo as apollo  # used for search URLs in templates
 import app.ai as ai
 import app.email_client as emailer
 
@@ -136,6 +136,11 @@ def approve_account(
     account_id: int,
     email_variant: int = Form(...),
     li_variant: int = Form(...),
+    contact_first_name: str = Form(default=""),
+    contact_last_name: str = Form(default=""),
+    contact_title: str = Form(default=""),
+    contact_email: str = Form(default=""),
+    contact_linkedin: str = Form(default=""),
     db: Session = Depends(get_db),
 ):
     acc = db.get(Account, account_id)
@@ -144,13 +149,23 @@ def approve_account(
     if acc.status == "approved":
         return RedirectResponse(f"/account/{account_id}", status_code=303)
 
-    # Reveal contact email — costs 1 Apollo credit
-    primary = db.query(Contact).filter_by(account_id=account_id, rank=1).first()
-    if primary and primary.apollo_person_id and not primary.revealed:
-        email = apollo.reveal_contact_email(primary.apollo_person_id)
-        if email:
-            primary.email = email
-            primary.revealed = True
+    # Save manually entered contact (found via Apollo web or LinkedIn)
+    if contact_first_name or contact_email:
+        existing = db.query(Contact).filter_by(account_id=account_id, rank=1).first()
+        if existing:
+            existing.first_name   = contact_first_name or existing.first_name
+            existing.last_name    = contact_last_name  or existing.last_name
+            existing.title        = contact_title       or existing.title
+            existing.email        = contact_email       or existing.email
+            existing.linkedin_url = contact_linkedin    or existing.linkedin_url
+            existing.revealed     = bool(contact_email)
+        else:
+            db.add(Contact(
+                account_id=account_id, rank=1,
+                first_name=contact_first_name, last_name=contact_last_name,
+                title=contact_title, email=contact_email,
+                linkedin_url=contact_linkedin, revealed=bool(contact_email),
+            ))
 
     acc.status = "approved"
     acc.approved_at = datetime.utcnow()
