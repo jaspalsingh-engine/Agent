@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}{{ account.name }} — SDR Bot{% endblock %}
+{% block content %}
+
+<!-- Breadcrumb -->
+<div class="mb-4 text-sm text-slate-500">
+  <a href="/" class="hover:text-slate-700">Dashboard</a>
+  {% if batch %} &nbsp;/&nbsp; <a href="/batch/{{ batch.token }}" class="hover:text-slate-700">Week of {{ batch.week_start.strftime('%b %d') }}</a>{% endif %}
+  &nbsp;/&nbsp; <span class="text-slate-800">{{ account.name }}</span>
+</div>
+
+<!-- Header -->
+<div class="flex items-start justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-slate-900">{{ account.name }}</h1>
+    <div class="flex items-center gap-3 mt-1 text-sm text-slate-500">
+      {% if account.industry %}<span>{{ account.industry }}</span>{% endif %}
+      {% if account.city or account.state %}<span>·</span><span>{{ account.city }}{% if account.city and account.state %}, {% endif %}{{ account.state }}</span>{% endif %}
+      {% if account.employee_count %}<span>·</span><span>{{ account.employee_count }} employees</span>{% endif %}
+      {% if account.linkedin_url %}<span>·</span><a href="{{ account.linkedin_url }}" target="_blank" class="text-blue-500 hover:underline">LinkedIn</a>{% endif %}
+    </div>
+    {% if account.description %}
+    <p class="text-sm text-slate-600 mt-2 max-w-2xl">{{ account.description }}</p>
+    {% endif %}
+  </div>
+  <div class="text-right">
+    {% set score = account.propensity_score | int %}
+    <div class="score-badge w-16 h-16 text-xl {% if score >= 75 %}score-high{% elif score >= 55 %}score-mid{% else %}score-low{% endif %}">{{ score }}</div>
+    <p class="text-xs text-slate-400 mt-1">Propensity</p>
+  </div>
+</div>
+
+<!-- Signal + Status row -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+  <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+    <p class="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">Why Selected</p>
+    <p class="text-sm text-blue-900 font-medium">{{ account.trigger_signal or '—' }}</p>
+    {% if account.score_reasoning %}
+    <p class="text-xs text-blue-700 mt-2">{{ account.score_reasoning }}</p>
+    {% endif %}
+  </div>
+  <div class="bg-white border border-slate-200 rounded-xl p-4">
+    <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Status</p>
+    {% if account.status == 'approved' %}
+      <span class="text-sm font-bold text-green-600">✓ Approved</span>
+      {% if account.approved_at %}<p class="text-xs text-slate-400 mt-1">{{ account.approved_at.strftime('%b %d at %I:%M %p') }}</p>{% endif %}
+    {% elif account.status == 'rejected' %}
+      <span class="text-sm font-bold text-red-500">✗ Rejected</span>
+    {% else %}
+      <span class="text-sm font-bold text-amber-600">Pending Review</span>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Contacts -->
+<section class="mb-8">
+  <h2 class="text-lg font-semibold text-slate-900 mb-3">Ranked Contacts</h2>
+  {% if contacts %}
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    {% for contact in contacts %}
+    <div class="bg-white border border-slate-200 rounded-xl p-4">
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="font-semibold text-slate-900">{{ contact.first_name }} {{ contact.last_name }}</p>
+          <p class="text-sm text-slate-500">{{ contact.title or 'Unknown title' }}</p>
+          <p class="text-xs text-blue-600 mt-1">{{ contact.rank_reason or '' }}</p>
+        </div>
+        <span class="text-xs font-bold {{ 'text-blue-700 bg-blue-50' if contact.rank == 1 else 'text-slate-500 bg-slate-100' }} px-2 py-1 rounded-full">
+          #{{ contact.rank }}
+        </span>
+      </div>
+      <div class="mt-3 pt-3 border-t border-slate-100 text-xs space-y-1">
+        {% if contact.email %}
+          <p class="text-green-600 font-medium">✓ {{ contact.email }}</p>
+        {% elif contact.revealed %}
+          <p class="text-slate-400">Email not found</p>
+        {% else %}
+          <p class="text-slate-400 italic">Email revealed on approval</p>
+        {% endif %}
+        {% if contact.linkedin_url %}
+          <a href="{{ contact.linkedin_url }}" target="_blank" class="text-blue-500 hover:underline">View on LinkedIn →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-slate-400 text-sm">No contacts found for this account.</p>
+  {% endif %}
+</section>
+
+<!-- Approval form (only for pending accounts) -->
+{% if account.status == 'pending' %}
+<section class="mb-8">
+  <form method="post" action="/approve/{{ account.id }}" id="approveForm">
+    <input type="hidden" name="email_variant" value="0" id="emailVariantInput">
+    <input type="hidden" name="li_variant" value="0" id="liVariantInput">
+
+    <!-- Email Variants -->
+    <h2 class="text-lg font-semibold text-slate-900 mb-3">Choose Email Variant</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {% for v in email_variants %}
+      <div class="variant-card" data-group="email" data-index="{{ v.variant_index }}"
+           onclick="document.getElementById('emailVariantInput').value='{{ v.variant_index }}'">
+        <p class="text-xs font-bold text-blue-600 uppercase tracking-wide mb-2">{{ v.style_label }}</p>
+        {% if v.subject %}<p class="text-xs text-slate-500 mb-2 font-medium">Subject: {{ v.subject }}</p>{% endif %}
+        <pre class="text-sm text-slate-700 leading-relaxed">{{ v.body }}</pre>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- LinkedIn Variants -->
+    <h2 class="text-lg font-semibold text-slate-900 mb-3">Choose LinkedIn Script</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      {% for v in li_variants %}
+      <div class="variant-card" data-group="li" data-index="{{ v.variant_index }}"
+           onclick="document.getElementById('liVariantInput').value='{{ v.variant_index }}'">
+        <p class="text-xs font-bold text-indigo-600 uppercase tracking-wide mb-2">{{ v.style_label }}</p>
+        <pre class="text-sm text-slate-700 leading-relaxed">{{ v.body }}</pre>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Action buttons -->
+    <div class="flex gap-3">
+      <button type="submit"
+              class="bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-3 rounded-xl transition">
+        ✓ Approve &amp; Send Outreach
+      </button>
+      <button type="button" onclick="rejectAccount()"
+              class="bg-white border border-red-200 text-red-500 hover:bg-red-50 font-semibold px-6 py-3 rounded-xl transition">
+        ✗ Reject
+      </button>
+    </div>
+  </form>
+
+  <form method="post" action="/reject/{{ account.id }}" id="rejectForm" style="display:none;"></form>
+  <script>function rejectAccount(){ document.getElementById('rejectForm').submit(); }</script>
+</section>
+
+{% elif account.status == 'approved' %}
+<!-- Touch Sequence -->
+<section class="mb-8">
+  <h2 class="text-lg font-semibold text-slate-900 mb-3">Touch Sequence</h2>
+  {% if touches %}
+  <div class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+        <tr>
+          <th class="px-5 py-3 text-left">Touch</th>
+          <th class="px-5 py-3 text-left">Channel</th>
+          <th class="px-5 py-3 text-left">Scheduled</th>
+          <th class="px-5 py-3 text-left">Status</th>
+          <th class="px-5 py-3 text-left"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-100">
+        {% for touch in touches %}
+        <tr>
+          <td class="px-5 py-3 font-medium">Touch {{ touch.touch_number }}</td>
+          <td class="px-5 py-3">
+            {% if touch.channel == 'email' %}
+              <span class="text-blue-600 font-medium">Email</span>
+            {% else %}
+              <span class="text-indigo-600 font-medium">LinkedIn</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-3 text-slate-500">{{ touch.scheduled_date.strftime('%b %d') }}</td>
+          <td class="px-5 py-3">
+            {% if touch.status == 'sent' %}
+              <span class="text-green-600 text-xs font-medium">✓ Sent</span>
+            {% elif touch.status == 'manual_pending' %}
+              <span class="text-orange-500 text-xs font-medium">⚡ Ready — copy &amp; send on LinkedIn</span>
+            {% elif touch.status == 'manual_done' %}
+              <span class="text-blue-600 text-xs font-medium">✓ Done</span>
+            {% elif touch.status == 'skipped' %}
+              <span class="text-slate-400 text-xs">Skipped</span>
+            {% else %}
+              <span class="text-slate-400 text-xs">Scheduled</span>
+            {% endif %}
+          </td>
+          <td class="px-5 py-3">
+            {% if touch.status == 'manual_pending' %}
+            <form method="post" action="/touch/{{ touch.id }}/done" style="display:inline;">
+              <button class="text-xs text-blue-600 hover:underline font-medium">Mark Sent</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-slate-400 text-sm">Touch sequence will be created after approval.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<!-- Replies -->
+{% if replies %}
+<section class="mb-8">
+  <h2 class="text-lg font-semibold text-slate-900 mb-3">Replies</h2>
+  <div class="space-y-3">
+    {% for reply in replies %}
+    <div class="bg-white border {% if reply.sentiment == 'hot' %}border-green-300 bg-green-50{% else %}border-slate-200{% endif %} rounded-xl p-4">
+      <div class="flex items-center gap-2 mb-1">
+        {% if reply.sentiment == 'hot' %}
+          <span class="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">HOT</span>
+        {% elif reply.sentiment == 'unsubscribe' %}
+          <span class="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Unsubscribe</span>
+        {% elif reply.sentiment == 'out_of_office' %}
+          <span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">OOO</span>
+        {% else %}
+          <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Neutral</span>
+        {% endif %}
+        <span class="text-xs text-slate-500">{{ reply.from_address }}</span>
+        <span class="text-xs text-slate-400">{{ reply.flagged_at.strftime('%b %d, %I:%M %p') }}</span>
+      </div>
+      <p class="text-sm text-slate-700 italic">"{{ reply.snippet }}"</p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% endblock %}

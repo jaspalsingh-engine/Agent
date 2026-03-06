@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — SDR Bot{% endblock %}
+{% block content %}
+
+<div class="mb-8">
+  <h1 class="text-2xl font-bold text-slate-900">Dashboard</h1>
+  <p class="text-slate-500 mt-1">Your autonomous SDR. Target: beat 6 meetings/month.</p>
+</div>
+
+<!-- Stats -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Accounts Approved</p>
+    <p class="text-3xl font-bold text-slate-900 mt-1">{{ stats.approved }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Emails Sent</p>
+    <p class="text-3xl font-bold text-slate-900 mt-1">{{ stats.emails_sent }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">Hot Replies</p>
+    <p class="text-3xl font-bold text-green-600 mt-1">{{ stats.hot_leads }}</p>
+  </div>
+  <div class="bg-white rounded-xl border border-slate-200 p-5">
+    <p class="text-xs text-slate-500 uppercase tracking-wide font-medium">LI Touches Pending</p>
+    <p class="text-3xl font-bold text-orange-500 mt-1">{{ stats.li_pending }}</p>
+  </div>
+</div>
+
+<!-- Weekly Batches -->
+<div class="bg-white rounded-xl border border-slate-200">
+  <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+    <h2 class="font-semibold text-slate-900">Weekly Batches</h2>
+    <form method="post" action="/admin/run-discovery">
+      <button class="text-sm bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-700 transition">
+        Run Discovery Now
+      </button>
+    </form>
+  </div>
+
+  {% if batches %}
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+      <tr>
+        <th class="px-6 py-3 text-left">Week</th>
+        <th class="px-6 py-3 text-left">Accounts</th>
+        <th class="px-6 py-3 text-left">Status Breakdown</th>
+        <th class="px-6 py-3 text-left">Digest Sent</th>
+        <th class="px-6 py-3 text-left"></th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for batch in batches %}
+      <tr class="hover:bg-slate-50">
+        <td class="px-6 py-4 font-medium">{{ batch.week_start.strftime('%b %d, %Y') }}</td>
+        <td class="px-6 py-4">{{ batch.accounts | length }}</td>
+        <td class="px-6 py-4">
+          <span class="text-green-600 font-medium">{{ batch.accounts | selectattr('status','eq','approved') | list | length }} approved</span>
+          &nbsp;·&nbsp;
+          <span class="text-slate-400">{{ batch.accounts | selectattr('status','eq','pending') | list | length }} pending</span>
+          &nbsp;·&nbsp;
+          <span class="text-red-400">{{ batch.accounts | selectattr('status','eq','rejected') | list | length }} rejected</span>
+        </td>
+        <td class="px-6 py-4">
+          {% if batch.digest_sent %}
+            <span class="text-green-600 text-xs font-medium">✓ Sent</span>
+          {% else %}
+            <span class="text-slate-400 text-xs">Pending</span>
+          {% endif %}
+        </td>
+        <td class="px-6 py-4">
+          <a href="/batch/{{ batch.token }}" class="text-blue-600 hover:underline font-medium">Review →</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="px-6 py-12 text-center text-slate-400">
+    <p class="text-lg font-medium">No batches yet.</p>
+    <p class="mt-1 text-sm">Click "Run Discovery Now" to kick off your first batch, or wait for Monday 7 AM.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

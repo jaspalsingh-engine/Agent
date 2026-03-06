@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Batch Review — {{ batch.week_start.strftime('%b %d') }}{% endblock %}
+{% block content %}
+
+<div class="flex items-center justify-between mb-6">
+  <div>
+    <a href="/" class="text-sm text-slate-500 hover:text-slate-700">← Dashboard</a>
+    <h1 class="text-2xl font-bold text-slate-900 mt-1">
+      Week of {{ batch.week_start.strftime('%B %d, %Y') }}
+    </h1>
+  </div>
+  <div class="flex gap-3 text-sm">
+    <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full font-medium">{{ approved_count }} approved</span>
+    <span class="bg-slate-100 text-slate-600 px-3 py-1 rounded-full font-medium">{{ pending_count }} pending</span>
+    <span class="bg-red-100 text-red-600 px-3 py-1 rounded-full font-medium">{{ rejected_count }} rejected</span>
+  </div>
+</div>
+
+<div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
+      <tr>
+        <th class="px-4 py-3 text-left w-8">#</th>
+        <th class="px-4 py-3 text-left">Company</th>
+        <th class="px-4 py-3 text-left">Industry</th>
+        <th class="px-4 py-3 text-left">Size</th>
+        <th class="px-4 py-3 text-left">Score</th>
+        <th class="px-4 py-3 text-left">Top Signal</th>
+        <th class="px-4 py-3 text-left">Status</th>
+        <th class="px-4 py-3 text-left"></th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-100">
+      {% for acc in accounts %}
+      <tr class="hover:bg-slate-50 {% if acc.status == 'rejected' %}opacity-40{% endif %}">
+        <td class="px-4 py-3 text-slate-400 font-mono text-xs">{{ loop.index }}</td>
+        <td class="px-4 py-3">
+          <span class="font-semibold text-slate-900">{{ acc.name }}</span>
+          {% if acc.domain %}
+          <br><span class="text-xs text-slate-400">{{ acc.domain }}</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-slate-600">{{ acc.industry or '—' }}</td>
+        <td class="px-4 py-3 text-slate-600">{{ acc.employee_count or '—' }}</td>
+        <td class="px-4 py-3">
+          {% set score = acc.propensity_score | int %}
+          <span class="score-badge {% if score >= 75 %}score-high{% elif score >= 55 %}score-mid{% else %}score-low{% endif %}">
+            {{ score }}
+          </span>
+        </td>
+        <td class="px-4 py-3 text-slate-600 text-xs max-w-xs">{{ acc.trigger_signal or '—' }}</td>
+        <td class="px-4 py-3">
+          {% if acc.status == 'approved' %}
+            <span class="text-xs font-medium text-green-600 bg-green-50 px-2 py-1 rounded-full">Approved</span>
+          {% elif acc.status == 'rejected' %}
+            <span class="text-xs font-medium text-red-500 bg-red-50 px-2 py-1 rounded-full">Rejected</span>
+          {% else %}
+            <span class="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-full">Pending</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3">
+          <a href="/account/{{ acc.id }}" class="text-blue-600 hover:underline font-medium whitespace-nowrap">
+            {% if acc.status == 'pending' %}Review →{% else %}View →{% endif %}
+          </a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

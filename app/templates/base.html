@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}SDR Bot{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .score-badge {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%; font-weight: 700; font-size: 14px;
+    }
+    .score-high   { background: #dcfce7; color: #15803d; }
+    .score-mid    { background: #fef9c3; color: #a16207; }
+    .score-low    { background: #f1f5f9; color: #64748b; }
+    .touch-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    .touch-sent       { background: #22c55e; }
+    .touch-pending    { background: #e2e8f0; }
+    .touch-manual     { background: #f97316; }
+    .touch-done       { background: #3b82f6; }
+    .touch-skipped    { background: #d1d5db; }
+    .variant-card { cursor: pointer; border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px; transition: border-color .15s; }
+    .variant-card:hover { border-color: #94a3b8; }
+    .variant-card.selected { border-color: #2563eb; background: #eff6ff; }
+    pre { white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 14px; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+<!-- Nav -->
+<nav class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+  <a href="/" class="font-bold text-lg tracking-tight">SDR Bot</a>
+  <div class="flex gap-6 text-sm text-slate-300">
+    <a href="/" class="hover:text-white">Dashboard</a>
+    <a href="/hot-leads" class="hover:text-white">Hot Leads</a>
+    <a href="/linkedin-queue" class="hover:text-white">LinkedIn Queue</a>
+  </div>
+</nav>
+
+<!-- Content -->
+<main class="max-w-6xl mx-auto px-6 py-8">
+  {% block content %}{% endblock %}
+</main>
+
+<script>
+  // Variant selection
+  document.querySelectorAll('.variant-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const group = card.dataset.group;
+      document.querySelectorAll(`.variant-card[data-group="${group}"]`).forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      const input = document.querySelector(`input[name="${group}_variant"]`);
+      if (input) input.value = card.dataset.index;
+    });
+  });
+  // Auto-select first variant in each group
+  ['email', 'li'].forEach(group => {
+    const first = document.querySelector(`.variant-card[data-group="${group}"]`);
+    if (first) first.click();
+  });
+</script>
+</body>
+</html>
