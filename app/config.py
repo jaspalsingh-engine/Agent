@@ -4,9 +4,9 @@ from typing import List
 
 class Settings(BaseSettings):
     apollo_api_key: str
-    anthropic_api_key: str
+    openai_api_key: str
 
-    gmail_sender_address: str
+    gmail_sender_address: str = ""
     gmail_credentials_path: str = "credentials/credentials.json"
     gmail_token_path: str = "credentials/token.json"
 
@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     your_title: str = "Director of Revenue Operations"
     your_company: str = "YourCompany"
     your_calendly_link: str = "https://calendly.com/yourlink"
-    digest_email_recipient: str
+    digest_email_recipient: str = ""
 
     app_host: str = "localhost"
     app_port: int = 8000

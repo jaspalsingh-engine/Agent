@@ -1,16 +1,18 @@
 """
-Claude API client.
+OpenAI client (gpt-4o-mini).
 - Batch-scores companies (10 at a time) for propensity
 - Generates 3 email variants + 2 LinkedIn variants per account
 - Classifies reply sentiment
+
+Cost estimate at this volume: ~$0.20–0.50/month well within $10 limit.
 """
 import json
 from typing import List, Dict, Any, Tuple
-import anthropic
+from openai import OpenAI
 from app.config import settings
 
-client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-MODEL = "claude-sonnet-4-6"
+client = OpenAI(api_key=settings.openai_api_key)
+MODEL = "gpt-4o-mini"
 
 SCORING_SYSTEM = """You are a B2B sales intelligence analyst specializing in corporate travel and hotel spend.
 Your job: score companies on their propensity to spend $250K+ annually on business hotel lodging in the United States.
@@ -21,7 +23,6 @@ HIGH propensity signals:
 - Hiring field-facing roles (Account Executives, Project Managers, Field Engineers, Consultants, Territory Managers)
 - Recent expansion, new office, or relocation news
 - Revenue/employee ratio suggesting well-funded travel-eligible workforce
-- ZI Intent signals for travel, lodging, T&E topics
 
 LOW propensity signals:
 - Fully remote-first companies with no field roles
@@ -36,7 +37,7 @@ Platform facts (ALWAYS accurate):
 - 100% free — no contracts, no fees, no commitments
 - Access to negotiated hotel rates at 700,000+ properties worldwide
 - Centralized visibility on team hotel spend
-- The company earns 13% commission per booking — zero cost to the prospect
+- The company earns commission per booking — zero cost to the prospect
 
 Tone guidelines:
 - Variant A (Direct & Punchy): Short, confident, 3–4 sentences max. No fluff.
@@ -49,11 +50,24 @@ LinkedIn variants:
 
 Rules:
 - Use [First Name] as the placeholder — never fill in a real name
-- Include the Calendly link: {calendly}
+- Include the booking link: {calendly}
 - Every email must have a Subject line
 - Never sound like a robot or use buzzwords like "synergies", "leverage", "circle back"
 - Do NOT mention competitors
 Return ONLY valid JSON.""".format(calendly=settings.your_calendly_link)
+
+
+def _chat(system: str, user: str, max_tokens: int = 2000) -> str:
+    resp = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        response_format={"type": "json_object"},
+    )
+    return resp.choices[0].message.content
 
 
 def score_companies_batch(companies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -66,26 +80,24 @@ def score_companies_batch(companies: List[Dict[str, Any]]) -> List[Dict[str, Any
 Companies:
 {json.dumps(companies, indent=2)}
 
-Return a JSON array (same order as input):
-[
-  {{
-    "apollo_org_id": "<id>",
-    "score": <0-100 integer>,
-    "reasoning": "<2 sentences max explaining the score>",
-    "trigger_signal": "<single most compelling signal, e.g. '12 US offices + construction industry'>"
-  }}
-]"""
+Return a JSON object with a single key "results" containing an array (same order as input):
+{{
+  "results": [
+    {{
+      "apollo_org_id": "<id>",
+      "score": <0-100 integer>,
+      "reasoning": "<2 sentences max explaining the score>",
+      "trigger_signal": "<single most compelling signal, e.g. '12 US offices + construction industry'>"
+    }}
+  ]
+}}"""
 
-    msg = client.messages.create(
-        model=MODEL,
-        max_tokens=2000,
-        system=SCORING_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
     try:
-        return json.loads(msg.content[0].text)
+        raw = _chat(SCORING_SYSTEM, prompt, max_tokens=2000)
+        data = json.loads(raw)
+        return data.get("results", [])
     except Exception as e:
-        print(f"[AI] scoring parse error: {e}\nRaw: {msg.content[0].text[:500]}")
+        print(f"[AI] scoring parse error: {e}")
         return []
 
 
@@ -103,7 +115,7 @@ def score_all_companies(companies: List[Dict[str, Any]]) -> List[Dict[str, Any]]
                 "annual_revenue": c.get("annual_revenue_printed") or c.get("annual_revenue", ""),
                 "num_locations": len(c.get("locations", [])) or 1,
                 "description": (c.get("short_description") or c.get("description") or "")[:300],
-                "city": (c.get("primary_domain") and "") or c.get("city", ""),
+                "city": c.get("city", ""),
                 "state": c.get("state", ""),
             }
             for c in batch
@@ -139,7 +151,7 @@ Why they were selected: {account.get('trigger_signal')}
 {contact_context}
 Sender: {settings.your_name}, {settings.your_title} at {settings.your_company}
 
-Generate:
+Return a JSON object:
 {{
   "emails": [
     {{
@@ -175,14 +187,9 @@ Generate:
   ]
 }}"""
 
-    msg = client.messages.create(
-        model=MODEL,
-        max_tokens=2500,
-        system=OUTREACH_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
     try:
-        return json.loads(msg.content[0].text)
+        raw = _chat(OUTREACH_SYSTEM, prompt, max_tokens=2500)
+        return json.loads(raw)
     except Exception as e:
         print(f"[AI] outreach parse error for {account.get('name')}: {e}")
         return {"emails": [], "linkedin": []}
@@ -196,8 +203,8 @@ def generate_followup_email(
 ) -> Tuple[str, str]:
     """Generate follow-up or breakup email. Returns (subject, body)."""
     touch_labels = {
-        3: "soft follow-up (reference the first email, add a new angle)",
-        5: "breakup email (short, honest, leave door open)",
+        3: "soft follow-up (reference the first email, add a new angle, keep it short)",
+        5: "breakup email (3 sentences max, honest, leave the door open)",
     }
     label = touch_labels.get(touch_number, "follow-up email")
     prompt = f"""Write a {label} for this account.
@@ -206,18 +213,14 @@ Company: {account.get('name')}, {account.get('industry')}
 Contact first name: {contact_name or '[First Name]'}
 Original subject: {original_subject}
 Sender: {settings.your_name}, {settings.your_title} at {settings.your_company}
-Calendly: {settings.your_calendly_link}
+Booking link: {settings.your_calendly_link}
 Platform: free corporate hotel booking, no contracts
 
 Return JSON: {{"subject": "Re: {original_subject}", "body": "..."}}"""
 
-    msg = client.messages.create(
-        model=MODEL,
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}],
-    )
     try:
-        data = json.loads(msg.content[0].text)
+        raw = _chat("You are a B2B SDR. Return only valid JSON.", prompt, max_tokens=600)
+        data = json.loads(raw)
         return data["subject"], data["body"]
     except Exception:
         return f"Re: {original_subject}", "Following up on my last note — still worth a quick chat?"
@@ -228,25 +231,24 @@ def classify_reply(snippet: str, from_address: str) -> str:
     Classify a reply email.
     Returns: hot | neutral | unsubscribe | out_of_office
     """
-    prompt = f"""Classify this cold email reply:
+    prompt = f"""Classify this cold email reply into exactly one category.
 
 From: {from_address}
-Snippet: {snippet}
+Message snippet: {snippet}
 
 Categories:
 - hot: interested, asking for more info, wants to meet, asking questions about the product
-- out_of_office: automated OOO message
+- out_of_office: automated out-of-office message
 - unsubscribe: asking to be removed, not interested, stop emailing
-- neutral: unclear, could be interested, needs follow-up
+- neutral: unclear intent, could go either way
 
-Return ONLY one word: hot, out_of_office, unsubscribe, or neutral"""
+Return JSON: {{"sentiment": "<category>"}}"""
 
-    msg = client.messages.create(
-        model=MODEL,
-        max_tokens=10,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    result = msg.content[0].text.strip().lower()
-    if result not in ("hot", "out_of_office", "unsubscribe", "neutral"):
+    try:
+        raw = _chat("Classify email replies. Return only valid JSON.", prompt, max_tokens=20)
+        result = json.loads(raw).get("sentiment", "neutral")
+        if result not in ("hot", "out_of_office", "unsubscribe", "neutral"):
+            return "neutral"
+        return result
+    except Exception:
         return "neutral"
-    return result
