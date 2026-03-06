@@ -5,15 +5,15 @@ from typing import List
 class Settings(BaseSettings):
     apollo_api_key: str
     openai_api_key: str
-    resend_api_key: str
 
-    resend_from_email: str = "onboarding@resend.dev"   # replace once domain verified
-    digest_email_recipient: str = ""
+    gmail_smtp_user: str = ""
+    gmail_smtp_password: str = ""
 
     your_name: str = "Jaspal Singh"
     your_title: str = "Director of Revenue Operations"
-    your_company: str = "YourCompany"
-    your_calendly_link: str = "https://calendly.com/yourlink"
+    your_company: str = "Engine"
+    your_calendly_link: str = ""
+    digest_email_recipient: str = "jaspal.singh@engine.com"
 
     app_host: str = "localhost"
     app_port: int = 8000
