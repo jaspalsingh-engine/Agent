@@ -18,7 +18,7 @@ class WeeklyBatch(Base):
     __tablename__ = "weekly_batches"
 
     id = Column(Integer, primary_key=True)
-    token = Column(String, unique=True, nullable=False)   # URL auth token
+    token = Column(String, unique=True, nullable=False)
     week_start = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     digest_sent = Column(Boolean, default=False)
@@ -33,7 +33,6 @@ class Account(Base):
     batch_id = Column(Integer, ForeignKey("weekly_batches.id"))
     apollo_org_id = Column(String, unique=True, nullable=False)
 
-    # Firmographics
     name = Column(String, nullable=False)
     domain = Column(String)
     industry = Column(String)
@@ -44,19 +43,17 @@ class Account(Base):
     linkedin_url = Column(String)
     description = Column(Text)
 
-    # Scoring
     propensity_score = Column(Float, default=0)
     score_reasoning = Column(Text)
     trigger_signal = Column(String)
 
-    # Approval state: pending | approved | rejected
+    # pending | approved | rejected
     status = Column(String, default="pending")
     approved_at = Column(DateTime)
     rejected_at = Column(DateTime)
 
-    # Which outreach variants were selected (indexes)
-    selected_email_variant = Column(Integer)  # 0, 1, or 2
-    selected_li_variant = Column(Integer)     # 0 or 1
+    selected_email_variant = Column(Integer)
+    selected_li_variant = Column(Integer)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -78,10 +75,9 @@ class Contact(Base):
     title = Column(String)
     email = Column(String)
     linkedin_url = Column(String)
-    rank = Column(Integer, default=1)     # 1 = primary, 2 = secondary
+    rank = Column(Integer, default=1)
     rank_reason = Column(String)
-
-    revealed = Column(Boolean, default=False)   # True once credit used
+    revealed = Column(Boolean, default=False)
 
     account = relationship("Account", back_populates="contacts")
 
@@ -91,11 +87,10 @@ class OutreachVariant(Base):
 
     id = Column(Integer, primary_key=True)
     account_id = Column(Integer, ForeignKey("accounts.id"))
-
-    channel = Column(String)      # email | linkedin
-    variant_index = Column(Integer)  # 0, 1, 2
-    style_label = Column(String)  # e.g. "Direct & Punchy", "Story-Led", "Question Hook"
-    subject = Column(String)      # email only
+    channel = Column(String)          # email | linkedin
+    variant_index = Column(Integer)
+    style_label = Column(String)
+    subject = Column(String)
     body = Column(Text)
 
     account = relationship("Account", back_populates="variants")
@@ -106,15 +101,13 @@ class TouchTask(Base):
 
     id = Column(Integer, primary_key=True)
     account_id = Column(Integer, ForeignKey("accounts.id"))
-
-    touch_number = Column(Integer)   # 1–5
-    channel = Column(String)         # email | linkedin
+    touch_number = Column(Integer)
+    channel = Column(String)          # email | linkedin
     scheduled_date = Column(DateTime)
-    # pending | sent | delivered | manual_pending | manual_done | skipped
+    # pending | sent | manual_pending | manual_done | skipped
     status = Column(String, default="pending")
     sent_at = Column(DateTime)
-    gmail_message_id = Column(String)
-    gmail_thread_id = Column(String)
+    resend_email_id = Column(String)  # Resend message ID
 
     account = relationship("Account", back_populates="touches")
 
@@ -125,12 +118,11 @@ class ReplyEvent(Base):
     id = Column(Integer, primary_key=True)
     account_id = Column(Integer, ForeignKey("accounts.id"))
     touch_task_id = Column(Integer, ForeignKey("touch_tasks.id"))
-    gmail_message_id = Column(String)
-    gmail_thread_id = Column(String)
     from_address = Column(String)
     subject = Column(String)
-    snippet = Column(Text)
-    sentiment = Column(String)   # hot | neutral | unsubscribe | out_of_office
+    snippet = Column(Text)           # pasted by user
+    # hot | neutral | unsubscribe | out_of_office
+    sentiment = Column(String)
     flagged_at = Column(DateTime, default=datetime.utcnow)
     alert_sent = Column(Boolean, default=False)
 

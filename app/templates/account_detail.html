@@ -30,7 +30,7 @@
   </div>
 </div>
 
-<!-- Signal + Status row -->
+<!-- Signal + Status -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
   <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
     <p class="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-1">Why Selected</p>
@@ -65,9 +65,7 @@
           <p class="text-sm text-slate-500">{{ contact.title or 'Unknown title' }}</p>
           <p class="text-xs text-blue-600 mt-1">{{ contact.rank_reason or '' }}</p>
         </div>
-        <span class="text-xs font-bold {{ 'text-blue-700 bg-blue-50' if contact.rank == 1 else 'text-slate-500 bg-slate-100' }} px-2 py-1 rounded-full">
-          #{{ contact.rank }}
-        </span>
+        <span class="text-xs font-bold {{ 'text-blue-700 bg-blue-50' if contact.rank == 1 else 'text-slate-500 bg-slate-100' }} px-2 py-1 rounded-full">#{{ contact.rank }}</span>
       </div>
       <div class="mt-3 pt-3 border-t border-slate-100 text-xs space-y-1">
         {% if contact.email %}
@@ -89,14 +87,13 @@
   {% endif %}
 </section>
 
-<!-- Approval form (only for pending accounts) -->
+<!-- Approval form -->
 {% if account.status == 'pending' %}
 <section class="mb-8">
   <form method="post" action="/approve/{{ account.id }}" id="approveForm">
     <input type="hidden" name="email_variant" value="0" id="emailVariantInput">
     <input type="hidden" name="li_variant" value="0" id="liVariantInput">
 
-    <!-- Email Variants -->
     <h2 class="text-lg font-semibold text-slate-900 mb-3">Choose Email Variant</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
       {% for v in email_variants %}
@@ -109,7 +106,6 @@
       {% endfor %}
     </div>
 
-    <!-- LinkedIn Variants -->
     <h2 class="text-lg font-semibold text-slate-900 mb-3">Choose LinkedIn Script</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
       {% for v in li_variants %}
@@ -121,24 +117,21 @@
       {% endfor %}
     </div>
 
-    <!-- Action buttons -->
     <div class="flex gap-3">
-      <button type="submit"
-              class="bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-3 rounded-xl transition">
+      <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-3 rounded-xl transition">
         ✓ Approve &amp; Send Outreach
       </button>
-      <button type="button" onclick="rejectAccount()"
+      <button type="button" onclick="document.getElementById('rejectForm').submit()"
               class="bg-white border border-red-200 text-red-500 hover:bg-red-50 font-semibold px-6 py-3 rounded-xl transition">
         ✗ Reject
       </button>
     </div>
   </form>
-
   <form method="post" action="/reject/{{ account.id }}" id="rejectForm" style="display:none;"></form>
-  <script>function rejectAccount(){ document.getElementById('rejectForm').submit(); }</script>
 </section>
 
 {% elif account.status == 'approved' %}
+
 <!-- Touch Sequence -->
 <section class="mb-8">
   <h2 class="text-lg font-semibold text-slate-900 mb-3">Touch Sequence</h2>
@@ -159,25 +152,16 @@
         <tr>
           <td class="px-5 py-3 font-medium">Touch {{ touch.touch_number }}</td>
           <td class="px-5 py-3">
-            {% if touch.channel == 'email' %}
-              <span class="text-blue-600 font-medium">Email</span>
-            {% else %}
-              <span class="text-indigo-600 font-medium">LinkedIn</span>
-            {% endif %}
+            {% if touch.channel == 'email' %}<span class="text-blue-600 font-medium">Email</span>
+            {% else %}<span class="text-indigo-600 font-medium">LinkedIn</span>{% endif %}
           </td>
           <td class="px-5 py-3 text-slate-500">{{ touch.scheduled_date.strftime('%b %d') }}</td>
           <td class="px-5 py-3">
-            {% if touch.status == 'sent' %}
-              <span class="text-green-600 text-xs font-medium">✓ Sent</span>
-            {% elif touch.status == 'manual_pending' %}
-              <span class="text-orange-500 text-xs font-medium">⚡ Ready — copy &amp; send on LinkedIn</span>
-            {% elif touch.status == 'manual_done' %}
-              <span class="text-blue-600 text-xs font-medium">✓ Done</span>
-            {% elif touch.status == 'skipped' %}
-              <span class="text-slate-400 text-xs">Skipped</span>
-            {% else %}
-              <span class="text-slate-400 text-xs">Scheduled</span>
-            {% endif %}
+            {% if touch.status == 'sent' %}<span class="text-green-600 text-xs font-medium">✓ Sent</span>
+            {% elif touch.status == 'manual_pending' %}<span class="text-orange-500 text-xs font-medium">⚡ Ready — copy &amp; send on LinkedIn</span>
+            {% elif touch.status == 'manual_done' %}<span class="text-blue-600 text-xs font-medium">✓ Done</span>
+            {% elif touch.status == 'skipped' %}<span class="text-slate-400 text-xs">Skipped</span>
+            {% else %}<span class="text-slate-400 text-xs">Scheduled</span>{% endif %}
           </td>
           <td class="px-5 py-3">
             {% if touch.status == 'manual_pending' %}
@@ -191,29 +175,57 @@
       </tbody>
     </table>
   </div>
-  {% else %}
-  <p class="text-slate-400 text-sm">Touch sequence will be created after approval.</p>
   {% endif %}
+</section>
+
+<!-- Log a Reply -->
+<section class="mb-8">
+  <h2 class="text-lg font-semibold text-slate-900 mb-1">Got a Reply?</h2>
+  <p class="text-sm text-slate-500 mb-3">When someone replies in your inbox, log it here. Bot will classify it and alert you if it's hot.</p>
+  <div class="bg-white border border-slate-200 rounded-xl p-5">
+    <form method="post" action="/account/{{ account.id }}/log-reply" class="space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Their email address</label>
+          <input type="text" name="from_address" required placeholder="name@company.com"
+                 class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Classify as</label>
+          <select name="sentiment" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+            <option value="auto">Auto-detect (AI classifies)</option>
+            <option value="hot">Hot — they're interested</option>
+            <option value="neutral">Neutral — unclear</option>
+            <option value="unsubscribe">Unsubscribe — not interested</option>
+            <option value="out_of_office">Out of office</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Paste their reply</label>
+        <textarea name="snippet" required rows="3" placeholder="Paste the reply text here..."
+                  class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"></textarea>
+      </div>
+      <button type="submit" class="bg-slate-900 hover:bg-slate-700 text-white text-sm font-semibold px-5 py-2 rounded-lg transition">
+        Log Reply
+      </button>
+    </form>
+  </div>
 </section>
 {% endif %}
 
-<!-- Replies -->
+<!-- Logged Replies -->
 {% if replies %}
 <section class="mb-8">
-  <h2 class="text-lg font-semibold text-slate-900 mb-3">Replies</h2>
+  <h2 class="text-lg font-semibold text-slate-900 mb-3">Reply History</h2>
   <div class="space-y-3">
     {% for reply in replies %}
     <div class="bg-white border {% if reply.sentiment == 'hot' %}border-green-300 bg-green-50{% else %}border-slate-200{% endif %} rounded-xl p-4">
       <div class="flex items-center gap-2 mb-1">
-        {% if reply.sentiment == 'hot' %}
-          <span class="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">HOT</span>
-        {% elif reply.sentiment == 'unsubscribe' %}
-          <span class="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Unsubscribe</span>
-        {% elif reply.sentiment == 'out_of_office' %}
-          <span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">OOO</span>
-        {% else %}
-          <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Neutral</span>
-        {% endif %}
+        {% if reply.sentiment == 'hot' %}<span class="text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">HOT</span>
+        {% elif reply.sentiment == 'unsubscribe' %}<span class="text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Unsubscribe</span>
+        {% elif reply.sentiment == 'out_of_office' %}<span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">OOO</span>
+        {% else %}<span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Neutral</span>{% endif %}
         <span class="text-xs text-slate-500">{{ reply.from_address }}</span>
         <span class="text-xs text-slate-400">{{ reply.flagged_at.strftime('%b %d, %I:%M %p') }}</span>
       </div>
